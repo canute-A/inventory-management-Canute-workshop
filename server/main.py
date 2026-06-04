@@ -94,6 +94,17 @@ class DemandForecast(BaseModel):
     unit_cost: float
     lead_time_days: int
 
+class PurchaseOrderInfo(BaseModel):
+    id: str
+    backlog_item_id: str
+    supplier_name: str
+    quantity: int
+    unit_cost: float
+    expected_delivery_date: str
+    status: str
+    created_date: str
+    notes: Optional[str] = None
+
 class BacklogItem(BaseModel):
     id: str
     order_id: str
@@ -104,6 +115,8 @@ class BacklogItem(BaseModel):
     days_delayed: int
     priority: str
     has_purchase_order: Optional[bool] = False
+    purchase_order_id: Optional[str] = None
+    purchase_order: Optional[PurchaseOrderInfo] = None
 
 class PurchaseOrder(BaseModel):
     id: str
@@ -290,11 +303,38 @@ def get_backlog():
     result = []
     for item in backlog_items:
         item_dict = dict(item)
-        # Check if this backlog item has a purchase order
-        has_po = any(po["backlog_item_id"] == item["id"] for po in purchase_orders)
-        item_dict["has_purchase_order"] = has_po
+        # Attach the purchase order (if any) so the UI can show View PO after a reload
+        po = next((po for po in purchase_orders if po["backlog_item_id"] == item["id"]), None)
+        item_dict["has_purchase_order"] = po is not None
+        item_dict["purchase_order_id"] = po["id"] if po else None
+        item_dict["purchase_order"] = po
         result.append(item_dict)
     return result
+
+@app.post("/api/purchase-orders", response_model=PurchaseOrderInfo)
+def create_purchase_order(request: CreatePurchaseOrderRequest):
+    """Create a purchase order for a backlog item"""
+    backlog_item = next((b for b in backlog_items if b["id"] == request.backlog_item_id), None)
+    if not backlog_item:
+        raise HTTPException(status_code=404, detail="Backlog item not found")
+    if any(po["backlog_item_id"] == request.backlog_item_id for po in purchase_orders):
+        raise HTTPException(status_code=400, detail="A purchase order already exists for this backlog item")
+    if request.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be positive")
+    now = datetime.now()
+    po = {
+        "id": f"PO-{now.year}-{len(purchase_orders) + 1:04d}",
+        "backlog_item_id": request.backlog_item_id,
+        "supplier_name": request.supplier_name,
+        "quantity": request.quantity,
+        "unit_cost": request.unit_cost,
+        "expected_delivery_date": request.expected_delivery_date,
+        "status": "Ordered",
+        "created_date": now.isoformat(timespec="seconds"),
+        "notes": request.notes,
+    }
+    purchase_orders.append(po)
+    return po
 
 @app.get("/api/dashboard/summary")
 def get_dashboard_summary(
@@ -324,33 +364,83 @@ def get_dashboard_summary(
         "total_orders_value": sum(order["total_value"] for order in filtered_orders)
     }
 
+MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+def spending_month_names(month: Optional[str]) -> Optional[list]:
+    """Map a global Time Period value (YYYY-MM or Q#-2025) to monthly_spending month labels"""
+    if not month or month == 'all':
+        return None
+    if month.startswith('Q') and month in QUARTER_MAP:
+        return [MONTH_NAMES[int(m[5:7]) - 1] for m in QUARTER_MAP[month]]
+    try:
+        return [MONTH_NAMES[int(month[5:7]) - 1]]
+    except (ValueError, IndexError):
+        return None
+
 @app.get("/api/spending/summary")
-def get_spending_summary():
-    """Get spending summary statistics"""
-    return spending_summary
+def get_spending_summary(month: Optional[str] = None):
+    """Spending summary; a month/quarter narrows totals (derived from monthly_spending).
+    Warehouse/category/status filters don't apply: spend data has no such dimensions."""
+    names = spending_month_names(month)
+    if not names:
+        return spending_summary
+    rows = [m for m in monthly_spending if m['month'] in names]
+    keymap = {
+        'procurement': ('total_procurement_cost', 'procurement_change'),
+        'operational': ('total_operational_cost', 'operational_change'),
+        'labor': ('total_labor_cost', 'labor_change'),
+        'overhead': ('total_overhead', 'overhead_change'),
+    }
+    result = {}
+    # Change% is month-over-month, so it is only meaningful for a single-month selection
+    prev = None
+    if len(rows) == 1:
+        idx = MONTH_NAMES.index(rows[0]['month'])
+        prev = monthly_spending[idx - 1] if idx > 0 else None
+    for src, (total_key, change_key) in keymap.items():
+        total = sum(r[src] for r in rows)
+        result[total_key] = total
+        result[change_key] = round((total - prev[src]) / prev[src] * 100, 1) if prev and prev[src] else 0
+    return result
 
 @app.get("/api/spending/monthly")
-def get_monthly_spending():
-    """Get monthly spending breakdown"""
-    return monthly_spending
+def get_monthly_spending(month: Optional[str] = None):
+    """Get monthly spending breakdown, optionally narrowed to a month/quarter"""
+    names = spending_month_names(month)
+    if not names:
+        return monthly_spending
+    return [m for m in monthly_spending if m['month'] in names]
 
 @app.get("/api/spending/categories")
 def get_category_spending():
-    """Get spending by category"""
+    """Get spending by category (all-time: category data has no month dimension)"""
     return category_spending
 
 @app.get("/api/spending/transactions")
-def get_recent_transactions():
-    """Get recent transactions"""
-    return recent_transactions
+def get_recent_transactions(month: Optional[str] = None):
+    """Get recent transactions, optionally filtered to a month/quarter by date"""
+    if not month or month == 'all':
+        return recent_transactions
+    if month.startswith('Q') and month in QUARTER_MAP:
+        months = QUARTER_MAP[month]
+        return [t for t in recent_transactions if t.get('date', '')[:7] in months]
+    return [t for t in recent_transactions if t.get('date', '').startswith(month)]
 
 @app.get("/api/reports/quarterly")
-def get_quarterly_reports():
-    """Get quarterly performance reports"""
+def get_quarterly_reports(
+    warehouse: Optional[str] = None,
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+    month: Optional[str] = None
+):
+    """Get quarterly performance reports, honoring the same global filters as /api/orders"""
+    filtered_orders = apply_filters(orders, warehouse, category, status)
+    filtered_orders = filter_by_month(filtered_orders, month)
+
     # Calculate quarterly statistics from orders
     quarters = {}
 
-    for order in orders:
+    for order in filtered_orders:
         order_date = order.get('order_date', '')
         # Determine quarter
         if '2025-01' in order_date or '2025-02' in order_date or '2025-03' in order_date:
@@ -391,11 +481,19 @@ def get_quarterly_reports():
     return result
 
 @app.get("/api/reports/monthly-trends")
-def get_monthly_trends():
-    """Get month-over-month trends"""
+def get_monthly_trends(
+    warehouse: Optional[str] = None,
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+    month: Optional[str] = None
+):
+    """Get month-over-month trends, honoring the same global filters as /api/orders"""
+    filtered_orders = apply_filters(orders, warehouse, category, status)
+    filtered_orders = filter_by_month(filtered_orders, month)
+
     months = {}
 
-    for order in orders:
+    for order in filtered_orders:
         order_date = order.get('order_date', '')
         if not order_date:
             continue

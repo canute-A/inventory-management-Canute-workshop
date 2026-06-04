@@ -133,7 +133,10 @@
             <h3 class="card-title">{{ t('finance.transactions.title') }}</h3>
           </div>
           <div class="transactions-table-container">
-            <table class="transactions-table">
+            <div v-if="recentTransactions.length === 0" class="no-transactions">
+              {{ t('common.noData') }}
+            </div>
+            <table v-else class="transactions-table">
               <thead>
                 <tr>
                   <th>{{ t('finance.transactions.id') }}</th>
@@ -350,11 +353,12 @@ export default {
     const loadData = async () => {
       try {
         loading.value = true
+        const filters = getCurrentFilters()
         const [summaryRes, monthlyRes, categoryRes, transactionsRes, ordersRes] = await Promise.all([
-          api.getSpendingSummary(),
-          api.getMonthlySpending(),
+          api.getSpendingSummary(filters),
+          api.getMonthlySpending(filters),
           api.getCategorySpending(),
-          api.getTransactions(),
+          api.getTransactions(filters),
           api.getOrders()
         ])
 
@@ -370,10 +374,8 @@ export default {
       }
     }
 
-    // Watch for period filter changes
-    watch([selectedPeriod], () => {
-      // Data will automatically update via computed properties
-    })
+    // Reload data when the time period filter changes so the API receives the new month param
+    watch(selectedPeriod, loadData)
 
     const formatCurrency = (value) => {
       return formatCurrencyUtil(value, currentCurrency.value)
@@ -772,6 +774,13 @@ export default {
 .transactions-table-container {
   overflow-y: auto;
   max-height: 400px;
+}
+
+.no-transactions {
+  padding: 2.5rem;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.875rem;
 }
 
 .transactions-table {

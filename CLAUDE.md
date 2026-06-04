@@ -52,8 +52,12 @@ npm install && npm run dev
 - `GET /api/inventory` - Filters: warehouse, category
 - `GET /api/orders` - Filters: warehouse, category, status, month
 - `GET /api/dashboard/summary` - All filters
+- `GET /api/reports/quarterly`, `/api/reports/monthly-trends` - All filters
 - `GET /api/demand`, `/api/backlog` - No filters
-- `GET /api/spending/*` - Summary, monthly, categories, transactions
+- `GET /api/spending/*` - Summary, monthly, categories, transactions. Summary/monthly/transactions filter by month; categories is all-time (no month dimension); warehouse/category/status never apply (spend data lacks those dimensions)
+- `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/{id}` - My Tasks modal backing store (in-memory)
+- `GET/POST /api/restock-orders` - Restocking page orders (in-memory)
+- `POST /api/purchase-orders` - Create PO for a backlog item; rejects duplicates per item
 
 ## Common Issues
 1. Use unique keys in v-for (not `index`) - use `sku`, `month`, etc.

@@ -54,23 +54,30 @@ export const api = {
     return response.data
   },
 
-  async getSpendingSummary() {
-    const response = await axios.get(`${API_BASE_URL}/spending/summary`)
+  async getSpendingSummary(filters = {}) {
+    const params = new URLSearchParams()
+    if (filters.month && filters.month !== 'all') params.append('month', filters.month)
+    const response = await axios.get(`${API_BASE_URL}/spending/summary?${params.toString()}`)
     return response.data
   },
 
-  async getMonthlySpending() {
-    const response = await axios.get(`${API_BASE_URL}/spending/monthly`)
+  async getMonthlySpending(filters = {}) {
+    const params = new URLSearchParams()
+    if (filters.month && filters.month !== 'all') params.append('month', filters.month)
+    const response = await axios.get(`${API_BASE_URL}/spending/monthly?${params.toString()}`)
     return response.data
   },
 
   async getCategorySpending() {
+    // Category spending has no month dimension — no filter param sent
     const response = await axios.get(`${API_BASE_URL}/spending/categories`)
     return response.data
   },
 
-  async getTransactions() {
-    const response = await axios.get(`${API_BASE_URL}/spending/transactions`)
+  async getTransactions(filters = {}) {
+    const params = new URLSearchParams()
+    if (filters.month && filters.month !== 'all') params.append('month', filters.month)
+    const response = await axios.get(`${API_BASE_URL}/spending/transactions?${params.toString()}`)
     return response.data
   },
 
@@ -94,16 +101,6 @@ export const api = {
     return response.data
   },
 
-  async getRestockOrders() {
-    const response = await axios.get(`${API_BASE_URL}/restock-orders`)
-    return response.data
-  },
-
-  async createRestockOrder(orderData) {
-    const response = await axios.post(`${API_BASE_URL}/restock-orders`, orderData)
-    return response.data
-  },
-
   async createPurchaseOrder(purchaseOrderData) {
     const response = await axios.post(`${API_BASE_URL}/purchase-orders`, purchaseOrderData)
     return response.data
@@ -111,6 +108,28 @@ export const api = {
 
   async getPurchaseOrderByBacklogItem(backlogItemId) {
     const response = await axios.get(`${API_BASE_URL}/purchase-orders/${backlogItemId}`)
+    return response.data
+  },
+
+  async getQuarterlyReports(filters = {}) {
+    const params = new URLSearchParams()
+    if (filters.warehouse && filters.warehouse !== 'all') params.append('warehouse', filters.warehouse)
+    if (filters.category && filters.category !== 'all') params.append('category', filters.category)
+    if (filters.status && filters.status !== 'all') params.append('status', filters.status)
+    if (filters.month && filters.month !== 'all') params.append('month', filters.month)
+
+    const response = await axios.get(`${API_BASE_URL}/reports/quarterly?${params.toString()}`)
+    return response.data
+  },
+
+  async getMonthlyTrends(filters = {}) {
+    const params = new URLSearchParams()
+    if (filters.warehouse && filters.warehouse !== 'all') params.append('warehouse', filters.warehouse)
+    if (filters.category && filters.category !== 'all') params.append('category', filters.category)
+    if (filters.status && filters.status !== 'all') params.append('status', filters.status)
+    if (filters.month && filters.month !== 'all') params.append('month', filters.month)
+
+    const response = await axios.get(`${API_BASE_URL}/reports/monthly-trends?${params.toString()}`)
     return response.data
   }
 }
