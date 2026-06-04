@@ -57,7 +57,10 @@ export default {
       daysDelayed: '遅延日数',
       priority: '優先度',
       unitsShort: '単位不足',
-      days: '日'
+      days: '日',
+      actions: 'アクション',
+      createPO: '発注書作成',
+      viewPO: '発注書表示'
     },
     topProducts: {
       title: '収益別トップ製品',
@@ -411,5 +414,68 @@ export default {
     'Premier Industries': 'プレミア工業',
     'Stellar Components Ltd': 'ステラコンポーネンツ',
     'Dynamic Systems Ltd': 'ダイナミックシステムズ'
+  },
+
+  // Reports
+  reports: {
+    title: '業績レポート',
+    description: '四半期業績指標と月次推移を確認',
+    quarterlyPerformance: '四半期業績',
+    monthlyRevenueTrend: '月次収益推移',
+    monthOverMonthAnalysis: '前月比分析',
+    table: {
+      quarter: '四半期',
+      totalOrders: '総注文数',
+      totalRevenue: '総収益',
+      avgOrderValue: '平均注文額',
+      fulfillmentRate: '達成率',
+      month: '月',
+      orders: '注文数',
+      revenue: '収益',
+      change: '変化',
+      growthRate: '成長率'
+    },
+    stats: {
+      totalRevenueYTD: '年初来総収益',
+      avgMonthlyRevenue: '月平均収益',
+      totalOrdersYTD: '年初来総注文数',
+      bestPerformingQuarter: '最高業績四半期'
+    }
+  },
+
+  // Backlog
+  backlog: {
+    title: 'バックログ管理',
+    description: '在庫不足を追跡・解決',
+    cardTitle: 'バックログ品目',
+    noItems: 'バックログなし - すべての注文を履行できます！',
+    highPriority: '高優先度',
+    mediumPriority: '中優先度',
+    lowPriority: '低優先度',
+    totalItems: '総バックログ品目数'
+  },
+
+  // Purchase Orders
+  purchaseOrder: {
+    createTitle: '発注書を作成',
+    viewTitle: '発注書の詳細',
+    itemContext: '品目情報',
+    itemName: '品目名',
+    sku: 'SKU',
+    shortage: '不足数',
+    supplierName: '仕入先',
+    supplierNamePlaceholder: '仕入先名を入力',
+    quantity: '数量',
+    unitCost: '単価',
+    expectedDeliveryDate: '納期予定日',
+    notes: '備考',
+    notesPlaceholder: '任意の備考...',
+    submit: '発注書を作成',
+    submitting: '作成中...',
+    status: 'ステータス',
+    createdDate: '作成日',
+    orderId: '発注書ID',
+    totalValue: '合計金額',
+    errorDuplicate: 'この品目の発注書は既に存在します。'
   }
 }

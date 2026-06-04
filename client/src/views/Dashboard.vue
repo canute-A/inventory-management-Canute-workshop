@@ -15,10 +15,13 @@
             <div class="kpi-header">
               <span class="kpi-label">{{ t('dashboard.kpi.inventoryTurnover') }}</span>
             </div>
-            <div class="kpi-value">4.2</div>
-            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 4.5 (-6.67%)</div>
+            <div class="kpi-value">{{ inventoryTurnover }}</div>
+            <div class="kpi-goal">
+              {{ t('dashboard.kpi.goal') }}: 4.5
+              ({{ inventoryTurnover >= 4.5 ? '+' : '' }}{{ ((inventoryTurnover / 4.5 - 1) * 100).toFixed(2) }}%)
+            </div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress" style="width: 93.33%"></div>
+              <div class="kpi-progress" :style="{ width: Math.min(inventoryTurnover / 4.5 * 100, 100) + '%' }"></div>
             </div>
           </div>
 
@@ -29,7 +32,7 @@
             <div class="kpi-value">{{ ordersData.fulfilled }}</div>
             <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: {{ ordersData.goal }} ({{ calculatePercentage(ordersData.fulfilled, ordersData.goal) }}%)</div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress" :style="{ width: calculatePercentage(ordersData.fulfilled, ordersData.goal) + '%' }"></div>
+              <div class="kpi-progress" :style="{ width: Math.min(ordersData.fulfilled / ordersData.goal * 100, 100) + '%' }"></div>
             </div>
           </div>
 
@@ -40,7 +43,7 @@
             <div class="kpi-value">{{ fillRate }}%</div>
             <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 95% ({{ fillRate - 95 > 0 ? '+' : '' }}{{ (fillRate - 95).toFixed(2) }}%)</div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress success" :style="{ width: (fillRate / 95 * 100) + '%' }"></div>
+              <div class="kpi-progress success" :style="{ width: Math.min(fillRate / 95 * 100, 100) + '%' }"></div>
             </div>
           </div>
 
@@ -59,10 +62,13 @@
             <div class="kpi-header">
               <span class="kpi-label">{{ t('dashboard.kpi.avgProcessingTime') }}</span>
             </div>
-            <div class="kpi-value">2.8</div>
-            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 3.0 (-6.67%)</div>
+            <div class="kpi-value">{{ avgProcessingTime }}</div>
+            <div class="kpi-goal">
+              {{ t('dashboard.kpi.goal') }}: 3.0
+              ({{ avgProcessingTime > 3.0 ? '+' : '' }}{{ ((avgProcessingTime / 3.0 - 1) * 100).toFixed(2) }}%)
+            </div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress success" style="width: 93.33%"></div>
+              <div class="kpi-progress success" :style="{ width: Math.min(avgProcessingTime / 3.0 * 100, 100) + '%' }"></div>
             </div>
           </div>
         </div>
@@ -180,7 +186,7 @@
                   <th>{{ t('dashboard.inventoryShortages.shortage') }}</th>
                   <th>{{ t('dashboard.inventoryShortages.daysDelayed') }}</th>
                   <th>{{ t('dashboard.inventoryShortages.priority') }}</th>
-                  <th>Actions</th>
+                  <th>{{ t('dashboard.inventoryShortages.actions') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -214,14 +220,14 @@
                       @click.stop="openPOModal(item)"
                       class="po-button create"
                     >
-                      Create PO
+                      {{ t('dashboard.inventoryShortages.createPO') }}
                     </button>
                     <button
                       v-else
                       @click.stop="viewPO(item)"
                       class="po-button view"
                     >
-                      View PO
+                      {{ t('dashboard.inventoryShortages.viewPO') }}
                     </button>
                   </td>
                 </tr>
@@ -304,12 +310,14 @@ import { useI18n } from '../composables/useI18n'
 import { formatCurrency } from '../utils/currency'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import BacklogDetailModal from '../components/BacklogDetailModal.vue'
+import PurchaseOrderModal from '../components/PurchaseOrderModal.vue'
 
 export default {
   name: 'Dashboard',
   components: {
     ProductDetailModal,
     BacklogDetailModal,
+    PurchaseOrderModal,
   },
   setup() {
     const { t, currentCurrency, translateProductName, translateWarehouse } = useI18n()
@@ -337,8 +345,54 @@ export default {
       getCurrentFilters
     } = useFilters()
 
-    const ordersData = ref({ fulfilled: 187, goal: 200 })
-    const fillRate = ref(96.8)
+    // Orders fulfilled KPI: count of delivered orders from current filter window
+    const ordersData = computed(() => {
+      const fulfilled = allOrders.value.filter(o => o.status.toLowerCase() === 'delivered').length
+      // Monthly goal is 17 (200 / 12 ≈ 17); annual goal is 200
+      const goal = selectedPeriod.value === 'all' ? 200 : 17
+      return { fulfilled, goal }
+    })
+
+    // Fill rate: percentage of orders that are NOT backordered, 1 decimal
+    const fillRate = computed(() => {
+      if (allOrders.value.length === 0) return 0
+      const nonBackordered = allOrders.value.filter(
+        o => o.status.toLowerCase() !== 'backordered'
+      ).length
+      return Number(((nonBackordered / allOrders.value.length) * 100).toFixed(1))
+    })
+
+    // Inventory turnover: sales-to-inventory ratio over the filtered window
+    const inventoryTurnover = computed(() => {
+      const totalOrderValue = allOrders.value.reduce((sum, o) => sum + (o.total_value || 0), 0)
+      const totalInventoryValue = inventoryItems.value.reduce(
+        (sum, i) => sum + (i.quantity_on_hand * i.unit_cost), 0
+      )
+      if (totalInventoryValue === 0) return 0
+      return Number((totalOrderValue / totalInventoryValue).toFixed(1))
+    })
+
+    // Avg processing time: mean days from order_date to expected_delivery across all filtered orders
+    const avgProcessingTime = computed(() => {
+      let totalDays = 0
+      let count = 0
+      allOrders.value.forEach(o => {
+        if (o.order_date && o.expected_delivery) {
+          const orderDate = new Date(o.order_date)
+          const deliveryDate = new Date(o.expected_delivery)
+          // Validate both dates before using .getTime()
+          if (!isNaN(orderDate.getTime()) && !isNaN(deliveryDate.getTime())) {
+            const days = (deliveryDate - orderDate) / (1000 * 60 * 60 * 24)
+            if (days >= 0) {
+              totalDays += days
+              count++
+            }
+          }
+        }
+      })
+      if (count === 0) return 0
+      return Number((totalDays / count).toFixed(1))
+    })
 
     const revenueGoal = computed(() => {
       // $800K per month, so if looking at all months (12 months), goal is 12 * 800K = 9.6M
@@ -563,7 +617,7 @@ export default {
         loading.value = true
         const filters = getCurrentFilters()
 
-        const [summaryData, ordersData, inventoryData, backlogData] = await Promise.all([
+        const [summaryData, ordersResponse, inventoryData, backlogData] = await Promise.all([
           api.getDashboardSummary(filters),
           api.getOrders(filters),
           api.getInventory(filters),
@@ -571,7 +625,7 @@ export default {
         ])
 
         summary.value = summaryData
-        allOrders.value = ordersData
+        allOrders.value = ordersResponse
         inventoryItems.value = inventoryData
         allBacklogItems.value = backlogData
       } catch (err) {
@@ -686,6 +740,8 @@ export default {
       summary,
       ordersData,
       fillRate,
+      inventoryTurnover,
+      avgProcessingTime,
       statusData,
       orderHealthMetrics,
       categoryData,
